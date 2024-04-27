@@ -1,14 +1,15 @@
-/ SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
 
-import {VRFCoordinatorV2Interface} from "@chainlink/contracts/src/v0.8/vrf/interfaces/VRFCoordinatorV2Interface.sol";
-import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
+import {VRFCoordinatorV2Interface} from "lib/chainlink-brownie-contracts/contracts//src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import {VRFConsumerBaseV2} from "lib/chainlink-brownie-contracts/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
 contract Raffle is VRFConsumerBaseV2 {
     error Raffle__NotEnoughEthSent();
     error Raffle__EthTransferFailed();
+    error Raffle__RaffleNotOpen();
 
-    enum RaffleState{
+    enum RaffleState {
         OPEN,
         CALCULATING
     }
@@ -30,7 +31,7 @@ contract Raffle is VRFConsumerBaseV2 {
     RaffleState private s_raffleState;
 
     event EnteredRaffle(address indexed player);
-    event PickedWinner(address indexed winner)
+    event PickedWinner(address indexed winner);
 
     constructor(
         uint256 entranceFee,
@@ -38,8 +39,8 @@ contract Raffle is VRFConsumerBaseV2 {
         address vrfCoordinator,
         bytes32 gasLane,
         uint64 subscriptionId,
-        uint32 i_callbackGasLimit
-    ) {
+        uint32 callbackGasLimit
+    ) VRFConsumerBaseV2(vrfCoordinator){
         i_entranceFee = entranceFee;
         i_interval = interval;
         i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinator);
@@ -51,10 +52,11 @@ contract Raffle is VRFConsumerBaseV2 {
 
     function enterRuffle() external payable {
         if (msg.value < i_entranceFee) {
-            revert NotEnoghtEthSent();
+            revert Raffle__NotEnoughEthSent();
         }
-        if(s_raffleState != RaffleState.OPEN) {
-            revert Raffle_RaffleNotOpen();
+        
+        if (s_raffleState != RaffleState.OPEN) {
+            revert Raffle__RaffleNotOpen();
         }
 
         s_players.push(payable(msg.sender));
@@ -65,24 +67,24 @@ contract Raffle is VRFConsumerBaseV2 {
         if ((block.timestamp - s_lastTimeStamp) < i_interval) {
             revert();
         }
-        s_raffleState = RaffleState.CALCULATING
+        s_raffleState = RaffleState.CALCULATING;
 
         i_vrfCoordinator.requestRandomWords(
             i_gasLane, i_subscriptionId, REQUEST_CONFIRMATIONS, i_callbackGasLimit, NUM_WORDS
         );
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override{
+    function fulfillRandomWords(uint256 requestId, uint256[] memory randomWords) internal override {
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable winner = s_players[indexOfWinner];
         s_recentWinner = winner;
-        s_raffleState = RaffleState.OPEN
+        s_raffleState = RaffleState.OPEN;
 
         s_players = new address payable[](0);
-        s_lastTimeStamp =block.timestamp;
+        s_lastTimeStamp = block.timestamp;
 
-        (bool success,) = winner.call{value: address(this).balance}("")
-        if(!success) {
+        (bool success,) = winner.call{value: address(this).balance}("");
+        if (!success) {
             revert Raffle__EthTransferFailed();
         }
 
